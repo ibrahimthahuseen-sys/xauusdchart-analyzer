@@ -86,7 +86,7 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TFS=['Auto-detect','D1','H4','H1','M30','M15','M5','M1'];const RANK={D1:1,H4:2,H1:3,M30:4,M15:5,M5:6,M1:7};
-let shots=[],last=null,hist=[];
+let shots=[],last=null,hist=[],lastBlobs=[];
 try{hist=JSON.parse(localStorage.getItem('gcai_hist')||'[]')}catch(e){}
 const saveHist=()=>{try{localStorage.setItem('gcai_hist',JSON.stringify(hist))}catch(e){hist=hist.slice(0,Math.max(3,hist.length-5));try{localStorage.setItem('gcai_hist',JSON.stringify(hist))}catch(e2){}}};
 const num=v=>{const n=parseFloat(v);return isFinite(n)?n:null};
@@ -129,8 +129,9 @@ async function callAI(prompt,blobs){
 // ---------- AI ----------
 const SYS=`You are a disciplined price-action analyst for XAUUSDc (gold, cent account) using MetaTrader 4 mobile screenshots. Analyze ONLY what is visible in the image(s).
 RULES: Never invent prices, timeframe or structure you cannot read. Read price levels from the right-hand price axis; estimate prices by interpolating between labelled axis values and say "approx". If the price scale or timeframe is unreadable, set readable=false and put specific questions in "questions" (and leave numeric fields null). Prioritize price action (swing structure, HH/HL/LH/LL, BOS, CHoCH, liquidity sweeps, breakouts, retests, rejection candles, false breakouts, consolidation) over indicators. Distinguish confirmed levels (multiple touches) from potential zones. Weight recent price action more. Never suggest entries in the middle of a range; prefer entries near strong S/R with confirmation. SL must sit beyond the invalidation level. TPs go at the next real S/R, TP1<TP2<TP3 in trade direction. Aim for at least 1:2 RR when the chart allows; if not, say so and lower quality. If no good setup exists set verdict "WAIT – NO TRADE" and valid=false for setups. Never guarantee profit. If multiple screenshots, analyze the higher timeframe first for trend and key levels, then use lower timeframes for precise entries; state when higher-timeframe confirmation is needed. If a previous analysis is provided, fill "comparison" with what changed (levels broken/held, setup still valid or invalidated).
+OVERLAY (used to draw lines on the screenshot): "overlay.image" = number of the image to annotate (prefer the lower-timeframe image used for entries). "axis_ref" = two price-axis labels you can read clearly on that image, far apart vertically, each with "y" = vertical position of the label text centre as a fraction of the image height (0 = top edge, 1 = bottom edge). Give every level a fallback "y" and every zone "y_from"/"y_to" the same way (fractions on that image). "trendlines" = the 2-4 most relevant lines (uptrend line through higher lows, downtrend line through lower highs, channel edges) with x1,y1,x2,y2 as fractions of image width/height (x: 0 = left edge, 1 = right edge), anchored on real visible swing points with at least 2 clear touches; otherwise return an empty list. Be precise, a line must sit on the candles/prices it refers to.
 OUTPUT: JSON only, no markdown, exactly this shape (numbers are plain numbers, null if unknown):
-{"readable":true,"questions":[],"timeframe":"","price":0,"trend":"Bullish|Bearish|Sideways","structure":{"summary":"","labels":["HH","HL"],"bos":"","choch":"","consolidation":""},"patterns":[""],"levels":[{"name":"Support 1","type":"support|resistance","price":0,"strength":"Strong|Medium|Minor","confirmed":true,"why":""}],"zones":[{"type":"supply|demand","from":0,"to":0,"note":""}],"buy":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"sell":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"verdict":"BUY|SELL|WAIT – NO TRADE","verdict_reason":"","htf_note":"","comparison":"","risks":""}`;
+{"readable":true,"questions":[],"timeframe":"","price":0,"trend":"Bullish|Bearish|Sideways","structure":{"summary":"","labels":["HH","HL"],"bos":"","choch":"","consolidation":""},"patterns":[""],"levels":[{"name":"Support 1","type":"support|resistance","price":0,"y":0.5,"strength":"Strong|Medium|Minor","confirmed":true,"why":""}],"zones":[{"type":"supply|demand","from":0,"to":0,"y_from":0.4,"y_to":0.45,"note":""}],"buy":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"sell":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"overlay":{"image":1,"axis_ref":[{"price":0,"y":0.1},{"price":0,"y":0.9}],"trendlines":[{"label":"Uptrend","type":"uptrend|downtrend|channel","x1":0.1,"y1":0.8,"x2":0.7,"y2":0.5}]},"verdict":"BUY|SELL|WAIT – NO TRADE","verdict_reason":"","htf_note":"","comparison":"","risks":""}`;
 $('go').onclick=async()=>{
  const btn=$('go');btn.disabled=true;btn.innerHTML='<span class="spin"></span>Analyzing…';$('msg').innerHTML='';$('status').textContent='Preparing images…';
  try{
@@ -144,9 +145,9 @@ $('go').onclick=async()=>{
   const r={text:await callAI(p,blobs)};
   let t=(r.text||'').replace(/```json|```/g,'');const a=t.indexOf('{'),b=t.lastIndexOf('}');
   if(a<0||b<0)throw new Error('The AI reply was incomplete. Please try again.');
-  const d=JSON.parse(t.slice(a,b+1));last=d;render(d);
+  const d=JSON.parse(t.slice(a,b+1));last=d;lastBlobs=blobs;render(d);const annot=await buildAnno(d).catch(()=>null);
   if(d.readable!==false){const th=await b2d(await scale(ord[0].file,360,.6));
-   hist.unshift({id:Date.now()+'',date:new Date().toLocaleString(),tf:d.timeframe||ord.map(s=>s.tf).join('+'),thumb:th,data:d});hist=hist.slice(0,30);saveHist();drawHist()}
+   hist.unshift({id:Date.now()+'',date:new Date().toLocaleString(),tf:d.timeframe||ord.map(s=>s.tf).join('+'),thumb:th,annot:annot,data:d});hist=hist.slice(0,20);saveHist();drawHist()}
   $('status').textContent='';$('result').scrollIntoView({behavior:'smooth'});
  }catch(e){$('status').textContent='';$('msg').innerHTML='<div class="err">'+esc(e.code==='rate_limited'?'Rate limit reached. Please wait a minute and retry.':e.message||'Analysis failed.')+'</div>'}
  btn.innerHTML='Analyze Chart';btn.disabled=!shots.length};
@@ -158,11 +159,12 @@ function setupCard(n,s,cls){const ok=s&&s.valid;const tp=(s&&s.tp)||[];
  ${[0,1,2].map(i=>`<div class="kv"><span>Take profit ${i+1}</span><b class="buy">${f(tp[i])}</b></div>`).join('')}<div class="kv"><span>Risk : reward</span><b>${esc(s.rr||'—')}</b></div></div>
  <p>${esc(s.why)}</p><b class="warn">Confirm before entering:</b><ul>${(s.confirmation||[]).map(c=>`<li>${esc(c)}</li>`).join('')}</ul>`
  :`<p class="mut">${esc((s&&s.why)||'The chart does not offer a clean opportunity in this direction.')}</p>`}</div>`}
-function render(d){const R=$('result');
+function render(d,annot){const R=$('result');
  if(d.readable===false||(d.questions&&d.questions.length&&d.price==null)){R.innerHTML=`<section class="card"><div class="ask"><b class="warn">I need more information before analyzing</b><ul>${(d.questions||['The price scale or timeframe is not readable.']).map(q=>`<li>${esc(q)}</li>`).join('')}</ul><small>Answer in the Notes box above (or upload a clearer screenshot with the price axis and timeframe visible) and press Analyze Chart again.</small></div></section>`;return}
  const v=d.verdict||'WAIT – NO TRADE',vc=col(v);
  const lv=(d.levels||[]).slice().sort((a,b)=>b.price-a.price);
- R.innerHTML=`<section class="card"><h2>2 · Market overview</h2>
+ R.innerHTML=`<section class="card"><h2>Annotated chart</h2><div id="annoBox"><small>Drawing chart…</small></div></section>
+ <section class="card"><h2>2 · Market overview</h2>
  <div class="verdict bg-${vc==='buy'?'buy':vc==='sell'?'sell':'warn'}">${esc(v)}<div style="font-size:13px;font-weight:500;margin-top:4px">${esc(d.verdict_reason)}</div></div>
  <div class="grid g4"><div class="stat"><small>Pair</small><b>XAUUSDc</b></div><div class="stat"><small>Timeframe</small><b>${esc(d.timeframe||'—')}</b></div><div class="stat"><small>Direction</small><b class="${col(d.trend)}">${esc(d.trend)}</b></div><div class="stat"><small>Visible price</small><b>${f(d.price)}</b></div></div>
  <h3 style="margin:14px 0 4px;font-size:14px">Market structure</h3><p style="margin:0">${esc(d.structure?.summary)}</p>
@@ -173,7 +175,65 @@ function render(d){const R=$('result');
  ${lv.map(l=>`<tr><td class="${l.type==='support'?'buy':'sell'}"><b>${esc(l.name)}</b></td><td><b>${f(l.price)}</b></td><td>${esc(l.strength)}</td><td><span class="pill ${l.confirmed?'bg-neu':'bg-warn'}">${l.confirmed?'Confirmed':'Potential'}</span> ${esc(l.why)}</td></tr>`).join('')}</table></div>
  ${(d.zones||[]).length?`<h3 style="margin:14px 0 6px;font-size:14px">Supply &amp; demand zones</h3>${d.zones.map(z=>`<div class="kv"><span class="${z.type==='demand'?'buy':'sell'}"><b>${esc(z.type)}</b> ${f(z.from)} – ${f(z.to)}</span><span class="mut" style="text-align:right">${esc(z.note)}</span></div>`).join('')}`:''}</section>
  <section class="card"><h2>4 · Recommended trading setups</h2><div class="grid g2">${setupCard('BUY',d.buy,'b')}${setupCard('SELL',d.sell,'s')}</div>
- ${d.risks?`<p class="warn" style="margin-bottom:0">Risk notes: ${esc(d.risks)}</p>`:''}</section>`}
+ ${d.risks?`<p class="warn" style="margin-bottom:0">Risk notes: ${esc(d.risks)}</p>`:''}</section>`;
+ if(annot)$('annoBox').innerHTML=`<img src="${annot}" alt="Annotated chart" style="width:100%;border-radius:12px;display:block"><div class="row"><a href="${annot}" download="xauusd-analysis.jpg"><button>Download image</button></a></div>`}
+
+
+// ---------- annotated chart ----------
+function drawAnno(ctx,W,H,d,o,img){
+ ctx.drawImage(img,0,0,W,H);
+ const fs=Math.max(12,Math.round(W/46)),lw=Math.max(1.5,W/650),ov=d.overlay||{};
+ let cal=null;const ar=(ov.axis_ref||[]).filter(a=>a&&isFinite(a.price)&&isFinite(a.y)&&a.price!=null).sort((a,b)=>a.price-b.price);
+ if(ar.length>=2){const a=ar[0],b=ar[ar.length-1];if(b.price!==a.price){const sl=(b.y-a.y)/(b.price-a.price);if(sl<0)cal={a,sl}}}
+ const Y=(p,fb)=>{let y=null;if(cal&&p!=null&&isFinite(p))y=(cal.a.y+(p-cal.a.price)*cal.sl)*H;else if(fb!=null&&isFinite(fb))y=fb*H;return y!=null&&y>0&&y<H?y:null};
+ let skipped=0;const labels=[];
+ const line=(y,c,dash,txt)=>{ctx.save();ctx.strokeStyle=c;ctx.lineWidth=lw;ctx.setLineDash(dash);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();ctx.restore();if(txt)labels.push({y,c,txt})};
+ const C={s:'#2ecc71',r:'#ff5a5f',tp:'#7bed9f',sl:'#ff3b3b',en:'#4cc9f0'};
+ // zones
+ if(o.zn)(d.zones||[]).forEach(z=>{const y1=Y(z.to,z.y_from),y2=Y(z.from,z.y_to);if(y1==null&&y2==null){skipped++;return}
+  const a=Math.min(y1??y2,y2??y1),b=Math.max(y1??y2,y2??y1),dm=z.type==='demand',c=dm?'46,204,113':'255,90,95';
+  ctx.fillStyle=`rgba(${c},.18)`;ctx.fillRect(0,a,W,Math.max(b-a,3));ctx.strokeStyle=`rgba(${c},.8)`;ctx.lineWidth=1;ctx.strokeRect(0,a,W,Math.max(b-a,3));
+  ctx.font=`700 ${Math.round(fs*.8)}px system-ui`;ctx.fillStyle=`rgb(${c})`;ctx.fillText(dm?'DEMAND':'SUPPLY',8,a+fs*.9)});
+ // levels
+ if(o.lv)(d.levels||[]).forEach(l=>{const y=Y(l.price,l.y);if(y==null){skipped++;return}const sup=l.type==='support';
+  line(y,sup?C.s:C.r,l.confirmed?[]:[10,6],o.lb?`${l.name} ${f(l.price)}`:null)});
+ // setups
+ if(o.st)[['BUY',d.buy,C.s],['SELL',d.sell,C.r]].forEach(([n,s,c])=>{if(!s||!s.valid)return;
+  const y1=Y(s.entry_to),y2=Y(s.entry_from);if(y1!=null||y2!=null){const a=Math.min(y1??y2,y2??y1),b=Math.max(y1??y2,y2??y1);ctx.fillStyle='rgba(76,201,240,.22)';ctx.fillRect(0,a,W,Math.max(b-a,3));ctx.strokeStyle=C.en;ctx.lineWidth=1;ctx.strokeRect(0,a,W,Math.max(b-a,3));labels.push({y:(a+b)/2,c:C.en,txt:`${n} entry`})}
+  const ys=Y(s.sl);if(ys!=null)line(ys,C.sl,[4,4],`${n} SL ${f(s.sl)}`);
+  (s.tp||[]).forEach((t,i)=>{const yt=Y(t);if(yt!=null)line(yt,C.tp,[2,5],`${n} TP${i+1} ${f(t)}`)})});
+ // trend lines
+ if(o.tl)(ov.trendlines||[]).forEach(t=>{if([t.x1,t.y1,t.x2,t.y2].some(v=>!isFinite(v)||v==null))return;
+  const x1=t.x1*W,y1=t.y1*H,x2=t.x2*W,y2=t.y2*H,c=/up/i.test(t.type)?'#4cc9f0':/down/i.test(t.type)?'#ff9f1c':'#d4af37';
+  ctx.strokeStyle=c;ctx.lineWidth=lw*1.6;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  if(x2!==x1&&x2<W){const k=(y2-y1)/(x2-x1),xe=W,ye=y2+k*(xe-x2);ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(xe,ye);ctx.stroke();ctx.setLineDash([])}
+  [[x1,y1],[x2,y2]].forEach(([x,y])=>{ctx.fillStyle=c;ctx.beginPath();ctx.arc(x,y,lw*2.2,0,7);ctx.fill()});
+  if(o.lb&&t.label){ctx.font=`700 ${Math.round(fs*.85)}px system-ui`;const w=ctx.measureText(t.label).width+10;const lx=Math.min(Math.max(x1,4),W-w-4),ly=Math.max(fs,y1-8);ctx.fillStyle=c;ctx.fillRect(lx,ly-fs*.85,w,fs*1.1);ctx.fillStyle='#111';ctx.fillText(t.label,lx+5,ly)}});
+ // right-side labels with simple collision avoidance
+ ctx.font=`700 ${Math.round(fs*.85)}px system-ui`;labels.sort((a,b)=>a.y-b.y);let prev=-1e9;const gap=fs*1.15;
+ labels.forEach(L=>{let y=Math.max(L.y,prev+gap);prev=y;const w=ctx.measureText(L.txt).width+12;ctx.fillStyle=L.c;ctx.globalAlpha=.92;ctx.fillRect(W-w-2,y-fs*.8,w,fs*1.05);ctx.globalAlpha=1;ctx.fillStyle='#0b0b0b';ctx.fillText(L.txt,W-w+4,y)});
+ return{calibrated:!!cal,skipped,trend:(ov.trendlines||[]).length};
+}
+async function buildAnno(d){
+ const box=$('annoBox');if(!box||!lastBlobs.length)return null;
+ const i=Math.min(Math.max((+(d.overlay&&d.overlay.image)||lastBlobs.length)-1,0),lastBlobs.length-1);
+ const url=URL.createObjectURL(lastBlobs[i]);
+ const img=await new Promise((res,rej)=>{const m=new Image();m.onload=()=>res(m);m.onerror=rej;m.src=url});
+ const W=img.width,H=img.height,cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.style.cssText='width:100%;border-radius:12px;display:block;background:#000';
+ const o={lv:true,zn:true,tl:true,st:false,lb:true};
+ box.innerHTML='<div class="row" id="annoTg" style="margin:0 0 10px">'+[['lv','Support / resistance'],['zn','Zones'],['tl','Trend lines'],['st','Entry · SL · TP'],['lb','Labels']].map(([k,t])=>`<label style="display:flex;gap:6px;align-items:center;margin:0;color:var(--tx)"><input type="checkbox" data-k="${k}" ${o[k]?'checked':''} style="width:auto"> ${t}</label>`).join('')+'</div>';
+ box.appendChild(cv);
+ const note=document.createElement('div');note.style.cssText='margin-top:8px;font-size:13px';box.appendChild(note);
+ const row=document.createElement('div');row.className='row';row.innerHTML='<button id="annoDl">Download image</button>';box.appendChild(row);
+ const redraw=()=>{const r=drawAnno(cv.getContext('2d'),W,H,d,o,img);
+  note.innerHTML=`<span class="mut"><b style="color:#2ecc71">━</b> support &nbsp;<b style="color:#ff5a5f">━</b> resistance &nbsp;(dashed = potential) &nbsp;<b style="color:#4cc9f0">━</b> uptrend &nbsp;<b style="color:#ff9f1c">━</b> downtrend</span><br>`+
+  `<span class="warn">${r.calibrated?'':'Price axis could not be calibrated; lines use the AI’s rough positions. '}${r.skipped?r.skipped+' level(s)/zone(s) fall outside this screenshot’s visible price range and are not drawn. ':''}Overlay is AI-estimated and may be slightly off, so verify it against your chart.</span>`};
+ box.querySelectorAll('#annoTg input').forEach(c=>c.onchange=()=>{o[c.dataset.k]=c.checked;redraw()});
+ $('annoDl').onclick=()=>cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='xauusd-analysis.png';a.click()},'image/png');
+ redraw();
+ const sc=Math.min(1,900/W),sm=document.createElement('canvas');sm.width=Math.round(W*sc);sm.height=Math.round(H*sc);sm.getContext('2d').drawImage(cv,0,0,sm.width,sm.height);
+ return sm.toDataURL('image/jpeg',.72);
+}
 
 // ---------- calculator ----------
 function fillCalc(s){if(!s||!s.valid){$('calc').innerHTML='<span class="warn">No valid setup of that type in the latest analysis.</span>';return}
@@ -203,7 +263,7 @@ function drawHist(){
  $('prev').innerHTML='<option value="">— none —</option>'+hist.map(h=>`<option value="${h.id}">${esc(h.date)} · ${esc(h.data.verdict)}</option>`).join('');
  $('hist').innerHTML=hist.length?hist.map(h=>{const d=h.data,b=d.buy,s=d.sell;return `<div class="hist"><img src="${h.thumb}" alt=""><div class="i"><b class="${col(d.verdict)}">${esc(d.verdict)}</b> <small>· ${esc(h.tf)} · ${esc(h.date)}</small><br><small>Price ${f(d.price)} · ${esc(d.trend)}${b?.valid?` · BUY ${f(b.entry_from)}–${f(b.entry_to)} SL ${f(b.sl)} TP ${(b.tp||[]).map(f).join('/')}`:''}${s?.valid?` · SELL ${f(s.entry_from)}–${f(s.entry_to)} SL ${f(s.sl)} TP ${(s.tp||[]).map(f).join('/')}`:''}</small></div>
  <div style="display:flex;flex-direction:column;gap:4px"><button data-v="${h.id}">View</button><label style="margin:0"><input type="checkbox" data-c="${h.id}" style="width:auto"> compare</label><button class="x" data-d="${h.id}">Delete</button></div></div>`}).join('')+'<button id="cmpb">Compare 2 selected</button>':'<small>No analyses yet. Your results are saved on this device.</small>';
- document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{const h=hist.find(x=>x.id===b.dataset.v);last=h.data;render(h.data);$('result').scrollIntoView({behavior:'smooth'})});
+ document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{const h=hist.find(x=>x.id===b.dataset.v);last=h.data;render(h.data,h.annot);$('result').scrollIntoView({behavior:'smooth'})});
  document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{hist=hist.filter(x=>x.id!==b.dataset.d);saveHist();drawHist()});
  const cb=$('cmpb');if(cb)cb.onclick=()=>{const ids=[...document.querySelectorAll('[data-c]:checked')].map(x=>x.dataset.c);if(ids.length!==2){$('cmp').innerHTML='<p class="warn">Tick exactly two analyses to compare.</p>';return}
   const [A,B]=ids.map(i=>hist.find(h=>h.id===i)).sort((x,y)=>+x.id-+y.id);
