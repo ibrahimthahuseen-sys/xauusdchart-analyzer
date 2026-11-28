@@ -80,8 +80,8 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 <div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
 <div><label>Direction</label><select id="c_dir"><option value="buy">BUY</option><option value="sell">SELL</option></select></div>
 <div><label>Lot size</label><input id="c_lot" type="number" step="any" inputmode="decimal" placeholder="e.g. 0.10"></div>
-<div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from MT4 specification"></div></div>
-<small>Contract value: MT4 → Market Watch → long-press XAUUSDc → Specification. Cent contracts differ between brokers, so nothing is assumed.</small>
+<div><label>Contract size (from MT4 specification)</label><input id="c_val" type="number" step="any" inputmode="decimal" value="100" placeholder="e.g. 100"></div></div>
+<small>Contract size is on your symbol’s Specification page in MT4 (yours showed 100). The app converts it to money for you: with a USC (cents) account every 1.00 price move on 1 lot is contract size × 100 cents.</small>
 <button class="primary" id="calcBtn" style="width:100%;margin-top:12px">Calculate</button>
 <div id="calc" style="margin-top:12px" aria-live="polite"></div></section>
 
@@ -253,17 +253,17 @@ async function buildAnno(d){
 
 // ---------- risk : reward calculator ----------
 const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_dir','c_lot','c_val'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_dir','c_lot','c_val'];
-try{const k=JSON.parse(localStorage.getItem('gcai_calc4')||'{}');KEEP.forEach(x=>{if(k[x]!=null)$(x).value=k[x]})}catch(e){}
-CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc4',JSON.stringify(o))}catch(e){}$('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');if(dirty===false){dirty=true;$('calc').innerHTML='<small>Inputs changed. Press Calculate.</small>'}}));
+try{const k=JSON.parse(localStorage.getItem('gcai_calc5')||'{}');KEEP.forEach(x=>{if(k[x]!=null)$(x).value=k[x]})}catch(e){}
+CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc5',JSON.stringify(o))}catch(e){}$('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');if(dirty===false){dirty=true;$('calc').innerHTML='<small>Inputs changed. Press Calculate.</small>'}}));
 let dirty=false;
 $('calcBtn').onclick=()=>{dirty=false;calc()};
 CI.forEach(k=>$(k).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('calcBtn').click()}}));
 function calc(){
  $('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');
- const out=$('calc'),e=num($('c_entry').value),bal=num($('c_bal').value),rp=num($('c_risk').value),lot=num($('c_lot').value),val=num($('c_val').value);
+ const out=$('calc'),e=num($('c_entry').value),bal=num($('c_bal').value),rp=num($('c_risk').value),lot=num($('c_lot').value),cs=num($('c_val').value),val=cs!=null&&cs>0?cs*($('c_cur').value.startsWith('USC')?100:1):null;
  const rr=$('c_rr').value==='custom'?num($('c_rrc').value):num($('c_rr').value);
  const u=$('c_cur').value.startsWith('USC')?'USC':'USD',dir=$('c_dir').value==='buy'?1:-1;
- const miss=[];if(bal==null||bal<=0)miss.push('account balance');if(rp==null||rp<=0)miss.push('risk %');if(e==null)miss.push('entry price');if(lot==null||lot<=0)miss.push('lot size');if(val==null||val<=0)miss.push('contract value (price move per 1.00 lot)');if(rr==null||rr<=0)miss.push('reward ratio');
+ const miss=[];if(bal==null||bal<=0)miss.push('account balance');if(rp==null||rp<=0)miss.push('risk %');if(e==null)miss.push('entry price');if(lot==null||lot<=0)miss.push('lot size');if(val==null||val<=0)miss.push('contract size');if(rr==null||rr<=0)miss.push('reward ratio');
  if(miss.length){out.innerHTML='<small>Still needed: '+miss.join(', ')+'.</small>';return}
  const risk=bal*rp/100,dist=risk/(lot*val),sl=e-dir*dist,tpAt=r=>e+dir*dist*r,tp=tpAt(rr);
  const rows=[1,2,3];if(!rows.includes(rr))rows.push(rr);rows.sort((a,b)=>a-b);
@@ -273,6 +273,7 @@ function calc(){
  <div class="stat" style="border:1px solid var(--sell)"><small>STOP LOSS</small><b class="sell" style="font-size:22px">${sl.toFixed(2)}</b><small>${dist.toFixed(2)} from entry</small></div>
  <div class="stat" style="border:1px solid var(--buy)"><small>TAKE PROFIT · 1 : ${rr}</small><b class="buy" style="font-size:22px">${tp.toFixed(2)}</b><small>${(dist*rr).toFixed(2)} from entry</small></div>
  <div class="stat"><small>Risk (${rp}% of balance)</small><b class="sell">${risk.toFixed(2)} ${u}</b></div>
+ <div class="stat"><small>1.00 move on your lot</small><b>${(lot*val).toFixed(2)} ${u}</b></div>
  <div class="stat"><small>Profit at target</small><b class="buy">${(risk*rr).toFixed(2)} ${u}</b></div></div>
  ${sl<=0?'<p class="warn" style="margin:10px 0 0">⚠ This stop loss would be at or below zero. Lower the risk % or use a bigger lot size.</p>':''}
  <div class="tw"><table style="margin-top:10px;min-width:300px"><tr><th>R : R</th><th>Take profit</th><th>Profit if hit</th></tr>${rows.map(r=>`<tr${r===rr?' style="background:#24211a"':''}><td><b>1 : ${r}</b></td><td>${tpAt(r).toFixed(2)}</td><td class="buy">${(risk*r).toFixed(2)} ${u}</td></tr>`).join('')}</table></div>
