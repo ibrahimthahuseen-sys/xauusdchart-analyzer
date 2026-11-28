@@ -70,7 +70,7 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 <div id="result"></div>
 
 <section class="card"><h2>5 · Risk : Reward calculator</h2>
-<small>Enter your own entry and stop loss, pick your risk and your risk : reward. You get the take-profit price, lot size and profit. This does not use the AI analysis.</small>
+<small>Enter your balance, risk %, risk : reward, entry, direction and lot size. The stop loss is set so that losing the trade costs exactly your risk %, and the take profit follows your ratio. This does not use the AI analysis.</small>
 <div class="grid g4" style="margin-top:10px">
 <div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8000"></div>
 <div><label>Account unit</label><select id="c_cur"><option>USD</option><option>USC (cents)</option></select></div>
@@ -78,11 +78,10 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 <div><label>Risk : Reward</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
 <div id="c_rrc_w" class="hide"><label>Custom reward (1 : ?)</label><input id="c_rrc" type="number" step="any" inputmode="decimal" placeholder="e.g. 2.5"></div>
 <div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
-<div><label>Stop-loss price</label><input id="c_sl" type="number" step="any" inputmode="decimal"></div></div>
-<details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Lot size settings (only needed to get lot size &amp; money profit)</summary>
-<div class="grid g2" style="margin-top:8px"><div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from MT4 specification"></div>
-<div><label>Min lot step</label><input id="c_step" type="number" step="any" inputmode="decimal" value="0.01"></div></div>
-<small>MT4 → Market Watch → long-press XAUUSDc → Specification. Cent contracts differ between brokers, so nothing is assumed.</small></details>
+<div><label>Direction</label><select id="c_dir"><option value="buy">BUY</option><option value="sell">SELL</option></select></div>
+<div><label>Lot size</label><input id="c_lot" type="number" step="any" inputmode="decimal" placeholder="e.g. 0.10"></div>
+<div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from MT4 specification"></div></div>
+<small>Contract value: MT4 → Market Watch → long-press XAUUSDc → Specification. Cent contracts differ between brokers, so nothing is assumed.</small>
 <div id="calc" style="margin-top:12px"></div></section>
 
 <section class="card"><h2>6 · Analysis history</h2><div id="hist"></div>
@@ -252,30 +251,28 @@ async function buildAnno(d){
 }
 
 // ---------- risk : reward calculator ----------
-const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_sl','c_val','c_step'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_val','c_step'];
-try{const k=JSON.parse(localStorage.getItem('gcai_calc3')||'{}');KEEP.forEach(x=>{if(k[x]!=null)$(x).value=k[x]})}catch(e){}
-CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc3',JSON.stringify(o))}catch(e){}calc()}));
+const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_dir','c_lot','c_val'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_dir','c_lot','c_val'];
+try{const k=JSON.parse(localStorage.getItem('gcai_calc4')||'{}');KEEP.forEach(x=>{if(k[x]!=null)$(x).value=k[x]})}catch(e){}
+CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc4',JSON.stringify(o))}catch(e){}calc()}));
 function calc(){
  $('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');
- const out=$('calc'),e=num($('c_entry').value),sl=num($('c_sl').value);
- if(e==null||sl==null){out.innerHTML='<small>Enter your entry and stop-loss prices.</small>';return}
- if(e===sl){out.innerHTML='<div class="err">Entry and stop loss cannot be the same price.</div>';return}
- const bal=num($('c_bal').value),rp=num($('c_risk').value),val=num($('c_val').value),st=num($('c_step').value)||.01;
+ const out=$('calc'),e=num($('c_entry').value),bal=num($('c_bal').value),rp=num($('c_risk').value),lot=num($('c_lot').value),val=num($('c_val').value);
  const rr=$('c_rr').value==='custom'?num($('c_rrc').value):num($('c_rr').value);
- const u=$('c_cur').value.startsWith('USC')?'USC':'USD';
- const dir=sl<e?1:-1,dist=Math.abs(e-sl),tpAt=r=>e+dir*dist*r,dp=Math.max(2,(String(st).split('.')[1]||'').length);
- const maxRisk=bal!=null&&rp!=null?bal*rp/100:null,ok=val!=null&&val>0;
- const lot=ok&&maxRisk!=null?Math.floor(maxRisk/(dist*val)/st+1e-9)*st:null,risk=ok&&lot!=null?dist*val*lot:null;
- const money=r=>risk!=null?(risk*r).toFixed(2)+' '+u:'—';
- const tp=rr?tpAt(rr):null,rows=[1,2,3];if(rr&&!rows.includes(rr))rows.push(rr);rows.sort((a,b)=>a-b);
+ const u=$('c_cur').value.startsWith('USC')?'USC':'USD',dir=$('c_dir').value==='buy'?1:-1;
+ const miss=[];if(bal==null||bal<=0)miss.push('account balance');if(rp==null||rp<=0)miss.push('risk %');if(e==null)miss.push('entry price');if(lot==null||lot<=0)miss.push('lot size');if(val==null||val<=0)miss.push('contract value (price move per 1.00 lot)');if(rr==null||rr<=0)miss.push('reward ratio');
+ if(miss.length){out.innerHTML='<small>Still needed: '+miss.join(', ')+'.</small>';return}
+ const risk=bal*rp/100,dist=risk/(lot*val),sl=e-dir*dist,tpAt=r=>e+dir*dist*r,tp=tpAt(rr);
+ const rows=[1,2,3];if(!rows.includes(rr))rows.push(rr);rows.sort((a,b)=>a-b);
  out.innerHTML=`<div class="grid g4">
  <div class="stat"><small>Direction</small><b class="${dir>0?'buy':'sell'}">${dir>0?'BUY':'SELL'}</b></div>
- <div class="stat"><small>SL distance</small><b>${dist.toFixed(2)}</b></div>
- <div class="stat" style="border:1px solid var(--buy)"><small>TAKE PROFIT${rr?' · 1 : '+rr:''}</small><b class="buy" style="font-size:22px">${tp!=null?tp.toFixed(2):'—'}</b>${tp==null?'<small>Enter custom reward</small>':''}</div>
- <div class="stat"><small>Max risk (${rp??'?'}%)</small><b>${maxRisk!=null?maxRisk.toFixed(2)+' '+u:'—'}</b></div>
- <div class="stat"><small>Lot size</small><b class="warn">${lot!=null?lot.toFixed(dp):'—'}</b>${lot===0?'<small class="sell">Minimum lot is too big for this risk.</small>':''}${!ok?'<small>Add contract value in “Lot size settings”.</small>':''}</div></div>
- ${rr&&risk!=null?`<p style="margin:10px 0 0">Risk <b class="sell">${risk.toFixed(2)} ${u}</b> → potential profit <b class="buy">${money(rr)}</b></p>`:''}
- <div class="tw"><table style="margin-top:10px;min-width:300px"><tr><th>R : R</th><th>Take profit</th><th>Profit if hit</th></tr>${rows.map(r=>`<tr${r===rr?' style="background:#24211a"':''}><td><b>1 : ${r}</b></td><td>${tpAt(r).toFixed(2)}</td><td class="buy">${money(r)}</td></tr>`).join('')}</table></div>`}
+ <div class="stat"><small>Entry</small><b>${e.toFixed(2)}</b></div>
+ <div class="stat" style="border:1px solid var(--sell)"><small>STOP LOSS</small><b class="sell" style="font-size:22px">${sl.toFixed(2)}</b><small>${dist.toFixed(2)} from entry</small></div>
+ <div class="stat" style="border:1px solid var(--buy)"><small>TAKE PROFIT · 1 : ${rr}</small><b class="buy" style="font-size:22px">${tp.toFixed(2)}</b><small>${(dist*rr).toFixed(2)} from entry</small></div>
+ <div class="stat"><small>Risk (${rp}% of balance)</small><b class="sell">${risk.toFixed(2)} ${u}</b></div>
+ <div class="stat"><small>Profit at target</small><b class="buy">${(risk*rr).toFixed(2)} ${u}</b></div></div>
+ ${sl<=0?'<p class="warn" style="margin:10px 0 0">⚠ This stop loss would be at or below zero. Lower the risk % or use a bigger lot size.</p>':''}
+ <div class="tw"><table style="margin-top:10px;min-width:300px"><tr><th>R : R</th><th>Take profit</th><th>Profit if hit</th></tr>${rows.map(r=>`<tr${r===rr?' style="background:#24211a"':''}><td><b>1 : ${r}</b></td><td>${tpAt(r).toFixed(2)}</td><td class="buy">${(risk*r).toFixed(2)} ${u}</td></tr>`).join('')}</table></div>
+ <p class="mut" style="margin:10px 0 0;font-size:12px">The stop is placed purely from your risk % and lot size, not from chart structure. Check on your chart that it is not in a spot price easily reaches; if it is, change the lot size and recalculate.</p>`}
 calc();
 
 // ---------- history ----------
