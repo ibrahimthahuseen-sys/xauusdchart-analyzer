@@ -44,12 +44,18 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #1a1400;border-top-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:8px}@keyframes s{to{transform:rotate(360deg)}}
 .hide{display:none}
 </style></head><body><div class="wrap">
-<header><div class="logo">Au</div><div><h1>Gold Chart <span>AI</span></h1><small>XAUUSDc price-action analyzer · MT4 mobile screenshots</small></div></header>
+<header><div class="logo">Au</div><div><h1>Gold Chart <span>AI</span></h1><small>XAUUSDc price-action analyzer · MT4 mobile screenshots</small></div>
+<button id="menuBtn" aria-label="Open settings" aria-controls="drawer" aria-expanded="false" style="margin-left:auto;font-size:20px;padding:8px 12px;position:relative">⚙<span id="keyDot" class="hide" style="position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--warn)"></span></button></header>
+<div id="scrim" class="hide" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40"></div>
+<aside id="drawer" aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;width:min(360px,88vw);background:var(--card);border-left:1px solid var(--line);z-index:50;transform:translateX(100%);transition:transform .25s ease;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;overflow-y:auto;visibility:hidden">
+<div class="row" style="justify-content:space-between;margin:0 0 14px"><h2 style="margin:0">⚙ AI connection</h2><button id="menuClose" aria-label="Close settings" style="padding:6px 12px">✕</button></div>
+<label>Anthropic API key (stored only in this browser)</label><input id="k_key" type="password" placeholder="sk-ant-..." autocomplete="off">
+<label style="margin-top:12px">Model</label><input id="k_model" value="claude-sonnet-5-5">
+<p><small>Your key is sent only to api.anthropic.com from your own browser. Use it for personal use only; do not host this file publicly with a key inside it.</small></p>
+<button class="primary" id="menuSave" style="width:100%;margin-top:6px">Save &amp; close</button>
+</aside>
 
-<section class="card"><h2>⚙ AI connection</h2>
-<div class="grid g2"><div><label>Anthropic API key (stored only in this browser)</label><input id="k_key" type="password" placeholder="sk-ant-..." autocomplete="off"></div>
-<div><label>Model</label><input id="k_model" value="claude-sonnet-5-5"></div></div>
-<small>Your key is sent only to api.anthropic.com from your own browser. Use it for personal use only; do not host this file publicly with a key inside it.</small></section>
+
 
 <section class="card"><h2>1 · Upload chart screenshots</h2>
 <div class="drop" id="drop"><div style="font-size:30px">📈</div><b>Tap to choose from gallery, or drag &amp; drop</b><br><small>JPG, JPEG, PNG · add several timeframes (e.g. M15 + M5) · higher timeframe is analyzed first</small></div>
@@ -113,13 +119,22 @@ function scale(blob,max,q){return new Promise((res,rej)=>{const im=new Image();c
 const b2d=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(b)});
 
 
+// ---------- sidebar ----------
+const drawer=$('drawer'),scrim=$('scrim');
+function openDrawer(){drawer.style.visibility='visible';scrim.classList.remove('hide');requestAnimationFrame(()=>drawer.style.transform='translateX(0)');drawer.setAttribute('aria-hidden','false');$('menuBtn').setAttribute('aria-expanded','true');setTimeout(()=>$('k_key').focus(),260)}
+function closeDrawer(){drawer.style.transform='translateX(100%)';scrim.classList.add('hide');drawer.setAttribute('aria-hidden','true');$('menuBtn').setAttribute('aria-expanded','false');setTimeout(()=>{if(drawer.getAttribute('aria-hidden')==='true')drawer.style.visibility='hidden'},260);keyDot()}
+function keyDot(){$('keyDot').classList.toggle('hide',!!$('k_key').value.trim())}
+$('menuBtn').onclick=openDrawer;$('menuClose').onclick=closeDrawer;$('menuSave').onclick=closeDrawer;scrim.onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawer.getAttribute('aria-hidden')==='false')closeDrawer()});
+
 // ---------- AI connection ----------
 try{$('k_key').value=localStorage.getItem('gcai_key')||'';$('k_model').value=localStorage.getItem('gcai_model')||'claude-sonnet-5-5'}catch(e){}
-$('k_key').oninput=$('k_model').oninput=()=>{try{localStorage.setItem('gcai_key',$('k_key').value.trim());localStorage.setItem('gcai_model',$('k_model').value.trim())}catch(e){}};
+keyDot();
+$('k_key').oninput=$('k_model').oninput=()=>{keyDot();try{localStorage.setItem('gcai_key',$('k_key').value.trim());localStorage.setItem('gcai_model',$('k_model').value.trim())}catch(e){}};
 async function callAI(prompt,blobs){
  const key=$('k_key').value.trim();
  if(!key&&typeof claude!=='undefined'&&claude.use){try{const sm=await claude.use('sample');if(sm){const r=await sm(prompt,{images:blobs,modelTier:'complex',cache:false});return r.text}}catch(e){}}
- if(!key)throw new Error('Enter your Anthropic API key in the “AI connection” card first.');
+ if(!key){openDrawer();throw new Error('Enter your Anthropic API key in the settings sidebar (⚙ button, top right) first.')}
  const imgs=[];for(const b of blobs)imgs.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:(await b2d(b)).split(',')[1]}});
  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:$('k_model').value.trim()||'claude-sonnet-5-5',max_tokens:4000,messages:[{role:'user',content:[...imgs,{type:'text',text:prompt}]}]})});
  const j=await res.json().catch(()=>({}));
