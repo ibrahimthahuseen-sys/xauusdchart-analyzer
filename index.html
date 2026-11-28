@@ -64,18 +64,19 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 <div id="result"></div>
 
 <section class="card"><h2>5 · Risk management calculator</h2>
-<small>Enter values from your broker’s XAUUSDc contract specification (MT4 → Market Watch → right-click symbol → Specification). Nothing is assumed.</small>
+<small>You place the trade. The AI gives the entry and stop loss; you choose your risk and your own risk : reward. The calculator gives your lot size and take-profit price.</small>
 <div class="grid g4" style="margin-top:10px">
-<div><label>Account balance</label><input id="c_bal" type="number" step="any" placeholder="e.g. 5000"></div>
+<div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8166"></div>
 <div><label>Account unit</label><select id="c_cur"><option>USD</option><option>USC (cents)</option></select></div>
-<div><label>Risk %</label><input id="c_risk" type="number" step="any" value="1"></div>
-<div><label>Lot size (yours)</label><input id="c_lot" type="number" step="any" placeholder="0.10"></div>
-<div><label>Entry price</label><input id="c_entry" type="number" step="any"></div>
-<div><label>Stop-loss price</label><input id="c_sl" type="number" step="any"></div>
-<div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" placeholder="from specification"></div>
-<div><label>Min lot step</label><input id="c_step" type="number" step="any" value="0.01"></div>
-<div><label>TP1</label><input id="c_tp1" type="number" step="any"></div><div><label>TP2</label><input id="c_tp2" type="number" step="any"></div><div><label>TP3</label><input id="c_tp3" type="number" step="any"></div></div>
-<div class="row"><button id="useB">Fill from BUY setup</button><button id="useS">Fill from SELL setup</button></div>
+<div><label>Risk per trade %</label><input id="c_risk" type="number" step="any" inputmode="decimal" value="1"></div>
+<div><label>Risk : Reward (you choose)</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
+<div id="c_rrc_w" class="hide"><label>Custom reward (1 : ?)</label><input id="c_rrc" type="number" step="any" inputmode="decimal" placeholder="e.g. 2.5"></div>
+<div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
+<div><label>Stop-loss price</label><input id="c_sl" type="number" step="any" inputmode="decimal"></div>
+<div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from specification"></div>
+<div><label>Min lot step</label><input id="c_step" type="number" step="any" inputmode="decimal" value="0.01"></div></div>
+<small>Contract value: MT4 → Market Watch → long-press XAUUSDc → Specification. Cent-account contract sizes differ between brokers, so nothing is assumed.</small>
+<div class="row"><button id="useB">Use AI BUY entry &amp; SL</button><button id="useS">Use AI SELL entry &amp; SL</button></div>
 <div id="calc" style="margin-top:12px"></div></section>
 
 <section class="card"><h2>6 · Analysis history</h2><div id="hist"></div>
@@ -236,26 +237,36 @@ async function buildAnno(d){
 }
 
 // ---------- calculator ----------
-function fillCalc(s){if(!s||!s.valid){$('calc').innerHTML='<span class="warn">No valid setup of that type in the latest analysis.</span>';return}
- $('c_entry').value=((s.entry_from+s.entry_to)/2).toFixed(2);$('c_sl').value=s.sl;['1','2','3'].forEach((n,i)=>$('c_tp'+n).value=s.tp?.[i]??'');calc()}
-$('useB').onclick=()=>fillCalc(last?.buy);$('useS').onclick=()=>fillCalc(last?.sell);
-const CI=['c_bal','c_cur','c_risk','c_lot','c_entry','c_sl','c_val','c_step','c_tp1','c_tp2','c_tp3'];
-try{const s=JSON.parse(localStorage.getItem('gcai_calc')||'{}');['c_bal','c_cur','c_risk','c_val','c_step'].forEach(k=>{if(s[k]!=null)$(k).value=s[k]})}catch(e){}
-CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};['c_bal','c_cur','c_risk','c_val','c_step'].forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc',JSON.stringify(o))}catch(e){}calc()}));
-function calc(){const bal=num($('c_bal').value),rp=num($('c_risk').value),lot=num($('c_lot').value),e=num($('c_entry').value),sl=num($('c_sl').value),val=num($('c_val').value),st=num($('c_step').value)||.01;const u=$('c_cur').value.startsWith('USC')?'USC':'USD';
- if(e==null||sl==null||e===sl){$('calc').innerHTML='<small>Enter entry and stop-loss prices.</small>';return}
- if(val==null||val<=0){$('calc').innerHTML='<span class="warn">Enter the value of a 1.00 price move per 1 lot from your broker’s XAUUSDc specification to calculate money amounts.</span>';return}
- const dist=Math.abs(e-sl),dir=sl<e?1:-1,maxRisk=bal!=null&&rp!=null?bal*rp/100:null;
- const sug=maxRisk!=null?Math.floor(maxRisk/(dist*val)/st+1e-9)*st:null;
- const useLot=lot??sug;const risk=useLot!=null?dist*val*useLot:null;
- const tps=['1','2','3'].map(n=>num($('c_tp'+n).value)).map((t,i)=>{if(t==null)return null;const ok=(t-e)*dir>0;const d=Math.abs(t-e);return{i:i+1,t,ok,rr:d/dist,pl:useLot!=null?d*val*useLot:null}});
- $('calc').innerHTML=`<div class="grid g4"><div class="stat"><small>SL distance</small><b>${dist.toFixed(2)}</b></div>
+let aiTp=null;
+function fillCalc(s,n){if(!s||!s.valid){$('calc').innerHTML='<span class="warn">No valid '+n+' setup in the latest analysis.</span>';return}
+ $('c_entry').value=((s.entry_from+s.entry_to)/2).toFixed(2);$('c_sl').value=s.sl;aiTp=s.tp||null;calc()}
+$('useB').onclick=()=>fillCalc(last?.buy,'BUY');$('useS').onclick=()=>fillCalc(last?.sell,'SELL');
+const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_sl','c_val','c_step'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_val','c_step'];
+try{const s=JSON.parse(localStorage.getItem('gcai_calc2')||'{}');KEEP.forEach(k=>{if(s[k]!=null)$(k).value=s[k]})}catch(e){}
+CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc2',JSON.stringify(o))}catch(e){}calc()}));
+function calc(){
+ $('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');
+ const bal=num($('c_bal').value),rp=num($('c_risk').value),e=num($('c_entry').value),sl=num($('c_sl').value),val=num($('c_val').value),st=num($('c_step').value)||.01;
+ const rr=$('c_rr').value==='custom'?num($('c_rrc').value):num($('c_rr').value);
+ const u=$('c_cur').value.startsWith('USC')?'USC':'USD';
+ if(e==null||sl==null||e===sl){$('calc').innerHTML='<small>Enter entry and stop-loss prices (or tap “Use AI … entry &amp; SL”).</small>';return}
+ const dist=Math.abs(e-sl),dir=sl<e?1:-1,dp=Math.max(2,(String(st).split('.')[1]||'').length);
+ const tpAt=r=>e+dir*dist*r;
+ const maxRisk=bal!=null&&rp!=null?bal*rp/100:null;
+ const ok=val!=null&&val>0;
+ const lot=ok&&maxRisk!=null?Math.floor(maxRisk/(dist*val)/st+1e-9)*st:null;
+ const risk=ok&&lot!=null?dist*val*lot:null;
+ const money=r=>risk!=null?(risk*r).toFixed(2)+' '+u:'—';
+ const rows=[1,2,3].map(r=>({r,t:tpAt(r)}));if(rr&&![1,2,3].includes(rr))rows.push({r:rr,t:tpAt(rr)});rows.sort((a,b)=>a.r-b.r);
+ $('calc').innerHTML=`<div class="grid g4">
  <div class="stat"><small>Direction</small><b class="${dir>0?'buy':'sell'}">${dir>0?'BUY':'SELL'}</b></div>
+ <div class="stat"><small>SL distance</small><b>${dist.toFixed(2)}</b></div>
  <div class="stat"><small>Max risk (${rp??'?'}%)</small><b>${maxRisk!=null?maxRisk.toFixed(2)+' '+u:'—'}</b></div>
- <div class="stat"><small>Suggested lot size</small><b class="warn">${sug!=null?sug.toFixed(Math.max(2,(String(st).split('.')[1]||'').length)):'—'}</b></div>
- <div class="stat"><small>Estimated risk @ ${lot!=null?'your':'suggested'} lot${useLot!=null?' ('+useLot+')':''}</small><b class="sell">${risk!=null?risk.toFixed(2)+' '+u:'—'}</b>${risk!=null&&bal?`<small>${(risk/bal*100).toFixed(2)}% of balance${rp!=null&&risk>maxRisk*1.001?' · <span class="sell">above your limit</span>':''}</small>`:''}</div></div>
- ${sug===0?'<p class="warn">Even the minimum lot step exceeds your risk %. Widen your balance/risk or skip this trade.</p>':''}
- <div class="tw"><table style="margin-top:10px"><tr><th>Target</th><th>Price</th><th>R : R</th><th>Potential profit</th></tr>${tps.filter(Boolean).map(t=>`<tr><td>TP${t.i}</td><td>${t.t.toFixed(2)}</td><td>${t.ok?'1 : '+t.rr.toFixed(2):'<span class="sell">wrong side of entry</span>'}</td><td class="buy">${t.ok&&t.pl!=null?t.pl.toFixed(2)+' '+u:'—'}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Add take-profit prices to see potential profit.</td></tr>'}</table></div>`}
+ <div class="stat"><small>Lot size for that risk</small><b class="warn">${lot!=null?lot.toFixed(dp):'—'}</b>${lot===0?'<small class="sell">Even the minimum lot is too big for this risk. Skip it or widen the risk %.</small>':''}${!ok?'<small>Enter the contract value below to get lots.</small>':''}</div>
+ ${rr?`<div class="stat" style="border:1px solid var(--gold)"><small>Your TP at 1 : ${rr}</small><b class="buy">${tpAt(rr).toFixed(2)}</b>${risk!=null?`<small>Profit ${money(rr)} · Risk ${risk.toFixed(2)} ${u}</small>`:''}</div>`:'<div class="stat"><small>Custom reward</small><b>Enter a value</b></div>'}</div>
+ <div class="tw"><table style="margin-top:10px;min-width:320px"><tr><th>R : R</th><th>TP price</th><th>Profit if hit</th></tr>${rows.map(x=>`<tr${x.r===rr?' style="background:#24211a"':''}><td><b>1 : ${x.r}</b></td><td>${x.t.toFixed(2)}</td><td class="buy">${money(x.r)}</td></tr>`).join('')}</table></div>
+ ${aiTp&&aiTp.some(t=>t!=null)?`<p class="mut" style="margin:10px 0 0">AI chart targets for reference: ${aiTp.filter(t=>t!=null).map((t,i)=>'TP'+(i+1)+' '+f(t)+' (1 : '+(Math.abs(t-e)/dist).toFixed(2)+')').join(' · ')}</p>`:''}
+ ${rr&&aiTp&&aiTp.some(t=>t!=null)&&(aiTp[0]!=null&&Math.abs(aiTp[0]-e)<dist*rr*0.999&&!aiTp.some(t=>t!=null&&Math.abs(t-e)>=dist*rr*0.999))?`<p class="warn" style="margin:6px 0 0">Your chosen 1 : ${rr} target is farther than the AI’s nearest chart targets, so price may meet resistance/support before it.</p>`:''}`}
 calc();
 
 // ---------- history ----------
