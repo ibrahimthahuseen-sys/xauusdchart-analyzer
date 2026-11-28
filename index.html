@@ -63,20 +63,20 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 
 <div id="result"></div>
 
-<section class="card"><h2>5 · Risk management calculator</h2>
-<small>You place the trade. The AI gives the entry and stop loss; you choose your risk and your own risk : reward. The calculator gives your lot size and take-profit price.</small>
+<section class="card"><h2>5 · Trade planner</h2>
+<small>Pick your risk, your risk : reward and your entry. The app gives you the stop loss (from the chart levels the AI found) and the take profit. Analyze a chart first.</small>
 <div class="grid g4" style="margin-top:10px">
-<div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8166"></div>
+<div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8000"></div>
 <div><label>Account unit</label><select id="c_cur"><option>USD</option><option>USC (cents)</option></select></div>
 <div><label>Risk per trade %</label><input id="c_risk" type="number" step="any" inputmode="decimal" value="1"></div>
-<div><label>Risk : Reward (you choose)</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
+<div><label>Risk : Reward</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
 <div id="c_rrc_w" class="hide"><label>Custom reward (1 : ?)</label><input id="c_rrc" type="number" step="any" inputmode="decimal" placeholder="e.g. 2.5"></div>
 <div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
-<div><label>Stop-loss price</label><input id="c_sl" type="number" step="any" inputmode="decimal"></div>
-<div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from specification"></div>
+<div><label>Direction</label><select id="c_dir"><option value="auto">Auto (from entry &amp; chart)</option><option value="buy">BUY</option><option value="sell">SELL</option></select></div></div>
+<details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Lot size settings (only needed to get lot size &amp; money profit)</summary>
+<div class="grid g2" style="margin-top:8px"><div><label>Value of a 1.00 price move per 1.00 lot (account unit)</label><input id="c_val" type="number" step="any" inputmode="decimal" placeholder="from MT4 specification"></div>
 <div><label>Min lot step</label><input id="c_step" type="number" step="any" inputmode="decimal" value="0.01"></div></div>
-<small>Contract value: MT4 → Market Watch → long-press XAUUSDc → Specification. Cent-account contract sizes differ between brokers, so nothing is assumed.</small>
-<div class="row"><button id="useB">Use AI BUY entry &amp; SL</button><button id="useS">Use AI SELL entry &amp; SL</button></div>
+<small>MT4 → Market Watch → long-press XAUUSDc → Specification. Cent contracts differ between brokers, so nothing is assumed.</small></details>
 <div id="calc" style="margin-top:12px"></div></section>
 
 <section class="card"><h2>6 · Analysis history</h2><div id="hist"></div>
@@ -130,9 +130,10 @@ async function callAI(prompt,blobs){
 // ---------- AI ----------
 const SYS=`You are a disciplined price-action analyst for XAUUSDc (gold, cent account) using MetaTrader 4 mobile screenshots. Analyze ONLY what is visible in the image(s).
 RULES: Never invent prices, timeframe or structure you cannot read. Read price levels from the right-hand price axis; estimate prices by interpolating between labelled axis values and say "approx". If the price scale or timeframe is unreadable, set readable=false and put specific questions in "questions" (and leave numeric fields null). Prioritize price action (swing structure, HH/HL/LH/LL, BOS, CHoCH, liquidity sweeps, breakouts, retests, rejection candles, false breakouts, consolidation) over indicators. Distinguish confirmed levels (multiple touches) from potential zones. Weight recent price action more. Never suggest entries in the middle of a range; prefer entries near strong S/R with confirmation. SL must sit beyond the invalidation level. TPs go at the next real S/R, TP1<TP2<TP3 in trade direction. Aim for at least 1:2 RR when the chart allows; if not, say so and lower quality. If no good setup exists set verdict "WAIT – NO TRADE" and valid=false for setups. Never guarantee profit. If multiple screenshots, analyze the higher timeframe first for trend and key levels, then use lower timeframes for precise entries; state when higher-timeframe confirmation is needed. If a previous analysis is provided, fill "comparison" with what changed (levels broken/held, setup still valid or invalidated).
+LEVELS FOR STOP-LOSS: the app picks the trader\'s stop loss from your levels list, so list EVERY clear support below the visible price and EVERY clear resistance above it (at least 3 each when visible), including swing lows/highs and prior consolidation edges, each with a realistic price. "sl_buffer" = the distance in price units (not percent) to place a stop beyond a level, based on the wick sizes and volatility visible on this chart (so normal wicks do not trigger it); null if you cannot judge.
 OVERLAY (used to draw lines on the screenshot): "overlay.image" = number of the image to annotate (prefer the lower-timeframe image used for entries). "axis_ref" = two price-axis labels you can read clearly on that image, far apart vertically, each with "y" = vertical position of the label text centre as a fraction of the image height (0 = top edge, 1 = bottom edge). Give every level a fallback "y" and every zone "y_from"/"y_to" the same way (fractions on that image). "trendlines" = the 2-4 most relevant lines (uptrend line through higher lows, downtrend line through lower highs, channel edges) with x1,y1,x2,y2 as fractions of image width/height (x: 0 = left edge, 1 = right edge), anchored on real visible swing points with at least 2 clear touches; otherwise return an empty list. Be precise, a line must sit on the candles/prices it refers to.
 OUTPUT: JSON only, no markdown, exactly this shape (numbers are plain numbers, null if unknown):
-{"readable":true,"questions":[],"timeframe":"","price":0,"trend":"Bullish|Bearish|Sideways","structure":{"summary":"","labels":["HH","HL"],"bos":"","choch":"","consolidation":""},"patterns":[""],"levels":[{"name":"Support 1","type":"support|resistance","price":0,"y":0.5,"strength":"Strong|Medium|Minor","confirmed":true,"why":""}],"zones":[{"type":"supply|demand","from":0,"to":0,"y_from":0.4,"y_to":0.45,"note":""}],"buy":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"sell":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"overlay":{"image":1,"axis_ref":[{"price":0,"y":0.1},{"price":0,"y":0.9}],"trendlines":[{"label":"Uptrend","type":"uptrend|downtrend|channel","x1":0.1,"y1":0.8,"x2":0.7,"y2":0.5}]},"verdict":"BUY|SELL|WAIT – NO TRADE","verdict_reason":"","htf_note":"","comparison":"","risks":""}`;
+{"readable":true,"questions":[],"timeframe":"","price":0,"sl_buffer":0,"trend":"Bullish|Bearish|Sideways","structure":{"summary":"","labels":["HH","HL"],"bos":"","choch":"","consolidation":""},"patterns":[""],"levels":[{"name":"Support 1","type":"support|resistance","price":0,"y":0.5,"strength":"Strong|Medium|Minor","confirmed":true,"why":""}],"zones":[{"type":"supply|demand","from":0,"to":0,"y_from":0.4,"y_to":0.45,"note":""}],"buy":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"sell":{"valid":false,"entry_from":null,"entry_to":null,"sl":null,"tp":[null,null,null],"rr":"","quality":"A|B|C","why":"","confirmation":[""]},"overlay":{"image":1,"axis_ref":[{"price":0,"y":0.1},{"price":0,"y":0.9}],"trendlines":[{"label":"Uptrend","type":"uptrend|downtrend|channel","x1":0.1,"y1":0.8,"x2":0.7,"y2":0.5}]},"verdict":"BUY|SELL|WAIT – NO TRADE","verdict_reason":"","htf_note":"","comparison":"","risks":""}`;
 $('go').onclick=async()=>{
  const btn=$('go');btn.disabled=true;btn.innerHTML='<span class="spin"></span>Analyzing…';$('msg').innerHTML='';$('status').textContent='Preparing images…';
  try{
@@ -177,7 +178,7 @@ function render(d,annot){const R=$('result');
  ${(d.zones||[]).length?`<h3 style="margin:14px 0 6px;font-size:14px">Supply &amp; demand zones</h3>${d.zones.map(z=>`<div class="kv"><span class="${z.type==='demand'?'buy':'sell'}"><b>${esc(z.type)}</b> ${f(z.from)} – ${f(z.to)}</span><span class="mut" style="text-align:right">${esc(z.note)}</span></div>`).join('')}`:''}</section>
  <section class="card"><h2>4 · Recommended trading setups</h2><div class="grid g2">${setupCard('BUY',d.buy,'b')}${setupCard('SELL',d.sell,'s')}</div>
  ${d.risks?`<p class="warn" style="margin-bottom:0">Risk notes: ${esc(d.risks)}</p>`:''}</section>`;
- if(annot)$('annoBox').innerHTML=`<img src="${annot}" alt="Annotated chart" style="width:100%;border-radius:12px;display:block"><div class="row"><a href="${annot}" download="xauusd-analysis.jpg"><button>Download image</button></a></div>`}
+ calc();if(annot)$('annoBox').innerHTML=`<img src="${annot}" alt="Annotated chart" style="width:100%;border-radius:12px;display:block"><div class="row"><a href="${annot}" download="xauusd-analysis.jpg"><button>Download image</button></a></div>`}
 
 
 // ---------- annotated chart ----------
@@ -236,37 +237,53 @@ async function buildAnno(d){
  return sm.toDataURL('image/jpeg',.72);
 }
 
-// ---------- calculator ----------
-let aiTp=null;
-function fillCalc(s,n){if(!s||!s.valid){$('calc').innerHTML='<span class="warn">No valid '+n+' setup in the latest analysis.</span>';return}
- $('c_entry').value=((s.entry_from+s.entry_to)/2).toFixed(2);$('c_sl').value=s.sl;aiTp=s.tp||null;calc()}
-$('useB').onclick=()=>fillCalc(last?.buy,'BUY');$('useS').onclick=()=>fillCalc(last?.sell,'SELL');
-const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_sl','c_val','c_step'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_val','c_step'];
-try{const s=JSON.parse(localStorage.getItem('gcai_calc2')||'{}');KEEP.forEach(k=>{if(s[k]!=null)$(k).value=s[k]})}catch(e){}
-CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc2',JSON.stringify(o))}catch(e){}calc()}));
+// ---------- trade planner ----------
+const CI=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_entry','c_dir','c_val','c_step'],KEEP=['c_bal','c_cur','c_risk','c_rr','c_rrc','c_val','c_step'];
+try{const k=JSON.parse(localStorage.getItem('gcai_calc3')||'{}');KEEP.forEach(x=>{if(k[x]!=null)$(x).value=k[x]})}catch(e){}
+CI.forEach(k=>$(k).addEventListener('input',()=>{try{const o={};KEEP.forEach(x=>o[x]=$(x).value);localStorage.setItem('gcai_calc3',JSON.stringify(o))}catch(e){}calc()}));
 function calc(){
  $('c_rrc_w').classList.toggle('hide',$('c_rr').value!=='custom');
- const bal=num($('c_bal').value),rp=num($('c_risk').value),e=num($('c_entry').value),sl=num($('c_sl').value),val=num($('c_val').value),st=num($('c_step').value)||.01;
+ const out=$('calc'),e=num($('c_entry').value);
+ if(!last||last.readable===false){out.innerHTML='<small>Analyze a chart first. The stop loss is taken from the support/resistance levels the AI reads on your screenshot.</small>';return}
+ if(e==null){out.innerHTML='<small>Enter your entry price.</small>';return}
+ const bal=num($('c_bal').value),rp=num($('c_risk').value),val=num($('c_val').value),st=num($('c_step').value)||.01;
  const rr=$('c_rr').value==='custom'?num($('c_rrc').value):num($('c_rr').value);
  const u=$('c_cur').value.startsWith('USC')?'USC':'USD';
- if(e==null||sl==null||e===sl){$('calc').innerHTML='<small>Enter entry and stop-loss prices (or tap “Use AI … entry &amp; SL”).</small>';return}
- const dist=Math.abs(e-sl),dir=sl<e?1:-1,dp=Math.max(2,(String(st).split('.')[1]||'').length);
- const tpAt=r=>e+dir*dist*r;
- const maxRisk=bal!=null&&rp!=null?bal*rp/100:null;
- const ok=val!=null&&val>0;
- const lot=ok&&maxRisk!=null?Math.floor(maxRisk/(dist*val)/st+1e-9)*st:null;
- const risk=ok&&lot!=null?dist*val*lot:null;
+ const lv=(last.levels||[]).filter(l=>l&&l.price!=null&&isFinite(l.price));
+ const sup=lv.filter(l=>l.type==='support'&&l.price<e).sort((a,b)=>b.price-a.price);
+ const res=lv.filter(l=>l.type==='resistance'&&l.price>e).sort((a,b)=>a.price-b.price);
+ let dir,auto=false;const dsel=$('c_dir').value;
+ if(dsel==='buy')dir=1;else if(dsel==='sell')dir=-1;else{auto=true;
+  if(sup.length&&res.length)dir=(e-sup[0].price)<=(res[0].price-e)?1:-1;
+  else if(sup.length)dir=1;else if(res.length)dir=-1;
+  else dir=/sell/i.test(last.verdict||'')?-1:/buy/i.test(last.verdict||'')?1:null}
+ if(dir==null){out.innerHTML='<div class="ask">No support or resistance level from the analysis sits near that entry price. Check the entry, or analyze a chart that covers that price range.</div>';return}
+ const buf=Math.max(0,num(last.sl_buffer)||0);
+ const cand=dir>0?sup:res;const strong=cand.filter(l=>!/minor/i.test(l.strength||''));const pool=strong.length?strong:cand;
+ let base=pool.find(l=>Math.abs(e-l.price)>=Math.max(buf*1.5,0.0001));
+ let sl=null,why='';
+ if(base){sl=base.price-dir*buf;why=`${base.name} at ${f(base.price)} (${base.strength}${base.confirmed?', confirmed':', potential'})${buf?' + buffer '+buf.toFixed(2):''}. ${base.why||''}`}
+ else{const setup=dir>0?last.buy:last.sell;if(setup&&setup.sl!=null&&(dir>0?setup.sl<e:setup.sl>e)){sl=setup.sl;why='AI setup invalidation level from the analysis.'}}
+ if(sl==null){out.innerHTML=`<div class="ask"><b class="warn">No usable ${dir>0?'support below':'resistance above'} ${f(e)} was found in the analysis.</b><br><small>Pick the other direction, or upload a chart that shows the area around your entry.</small></div>`;return}
+ const dist=Math.abs(e-sl),tpAt=r=>e+dir*dist*r,dp=Math.max(2,(String(st).split('.')[1]||'').length);
+ const maxRisk=bal!=null&&rp!=null?bal*rp/100:null,ok=val!=null&&val>0;
+ const lot=ok&&maxRisk!=null?Math.floor(maxRisk/(dist*val)/st+1e-9)*st:null,risk=ok&&lot!=null?dist*val*lot:null;
  const money=r=>risk!=null?(risk*r).toFixed(2)+' '+u:'—';
- const rows=[1,2,3].map(r=>({r,t:tpAt(r)}));if(rr&&![1,2,3].includes(rr))rows.push({r:rr,t:tpAt(rr)});rows.sort((a,b)=>a.r-b.r);
- $('calc').innerHTML=`<div class="grid g4">
- <div class="stat"><small>Direction</small><b class="${dir>0?'buy':'sell'}">${dir>0?'BUY':'SELL'}</b></div>
- <div class="stat"><small>SL distance</small><b>${dist.toFixed(2)}</b></div>
+ const tp=rr?tpAt(rr):null;
+ const block=rr&&(dir>0?res:sup).find(l=>dir>0?l.price<tp:l.price>tp);
+ const rows=[1,2,3];if(rr&&!rows.includes(rr))rows.push(rr);rows.sort((a,b)=>a-b);
+ out.innerHTML=`<div class="grid g4">
+ <div class="stat"><small>Direction${auto?' (auto)':''}</small><b class="${dir>0?'buy':'sell'}">${dir>0?'BUY':'SELL'}</b></div>
+ <div class="stat"><small>Entry</small><b>${e.toFixed(2)}</b></div>
+ <div class="stat" style="border:1px solid var(--sell)"><small>STOP LOSS</small><b class="sell" style="font-size:22px">${sl.toFixed(2)}</b><small>${dist.toFixed(2)} away</small></div>
+ <div class="stat" style="border:1px solid var(--buy)"><small>TAKE PROFIT${rr?' · 1 : '+rr:''}</small><b class="buy" style="font-size:22px">${tp!=null?tp.toFixed(2):'—'}</b>${tp==null?'<small>Enter custom reward</small>':''}</div>
  <div class="stat"><small>Max risk (${rp??'?'}%)</small><b>${maxRisk!=null?maxRisk.toFixed(2)+' '+u:'—'}</b></div>
- <div class="stat"><small>Lot size for that risk</small><b class="warn">${lot!=null?lot.toFixed(dp):'—'}</b>${lot===0?'<small class="sell">Even the minimum lot is too big for this risk. Skip it or widen the risk %.</small>':''}${!ok?'<small>Enter the contract value below to get lots.</small>':''}</div>
- ${rr?`<div class="stat" style="border:1px solid var(--gold)"><small>Your TP at 1 : ${rr}</small><b class="buy">${tpAt(rr).toFixed(2)}</b>${risk!=null?`<small>Profit ${money(rr)} · Risk ${risk.toFixed(2)} ${u}</small>`:''}</div>`:'<div class="stat"><small>Custom reward</small><b>Enter a value</b></div>'}</div>
- <div class="tw"><table style="margin-top:10px;min-width:320px"><tr><th>R : R</th><th>TP price</th><th>Profit if hit</th></tr>${rows.map(x=>`<tr${x.r===rr?' style="background:#24211a"':''}><td><b>1 : ${x.r}</b></td><td>${x.t.toFixed(2)}</td><td class="buy">${money(x.r)}</td></tr>`).join('')}</table></div>
- ${aiTp&&aiTp.some(t=>t!=null)?`<p class="mut" style="margin:10px 0 0">AI chart targets for reference: ${aiTp.filter(t=>t!=null).map((t,i)=>'TP'+(i+1)+' '+f(t)+' (1 : '+(Math.abs(t-e)/dist).toFixed(2)+')').join(' · ')}</p>`:''}
- ${rr&&aiTp&&aiTp.some(t=>t!=null)&&(aiTp[0]!=null&&Math.abs(aiTp[0]-e)<dist*rr*0.999&&!aiTp.some(t=>t!=null&&Math.abs(t-e)>=dist*rr*0.999))?`<p class="warn" style="margin:6px 0 0">Your chosen 1 : ${rr} target is farther than the AI’s nearest chart targets, so price may meet resistance/support before it.</p>`:''}`}
+ <div class="stat"><small>Lot size</small><b class="warn">${lot!=null?lot.toFixed(dp):'—'}</b>${lot===0?'<small class="sell">Minimum lot is too big for this risk.</small>':''}${!ok?'<small>Add contract value in “Lot size settings”.</small>':''}</div></div>
+ ${rr&&risk!=null?`<p style="margin:10px 0 0">Risk <b class="sell">${risk.toFixed(2)} ${u}</b> → potential profit <b class="buy">${money(rr)}</b></p>`:''}
+ <div class="tw"><table style="margin-top:10px;min-width:300px"><tr><th>R : R</th><th>Take profit</th><th>Profit if hit</th></tr>${rows.map(r=>`<tr${r===rr?' style="background:#24211a"':''}><td><b>1 : ${r}</b></td><td>${tpAt(r).toFixed(2)}</td><td class="buy">${money(r)}</td></tr>`).join('')}</table></div>
+ <p class="mut" style="margin:10px 0 0"><b>Stop loss based on:</b> ${esc(why)}</p>
+ ${block?`<p class="warn" style="margin:6px 0 0">⚠ ${esc(block.name)} at ${f(block.price)} sits before your 1 : ${rr} target. Price may stall or reverse there; consider a lower ratio or partial profit.</p>`:''}
+ <p class="mut" style="margin:6px 0 0;font-size:12px">Levels are AI-estimated from your screenshot. Check the stop on your live chart before placing the trade.</p>`}
 calc();
 
 // ---------- history ----------
