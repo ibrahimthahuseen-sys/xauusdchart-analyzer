@@ -45,7 +45,25 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 .hide{display:none}
 </style></head><body><div class="wrap">
 <header><div class="logo">Au</div><div><h1>Gold Chart <span>AI</span></h1><small>XAUUSDc price-action analyzer · MT4 mobile screenshots</small></div>
-<button id="menuBtn" aria-label="Open settings" aria-controls="drawer" aria-expanded="false" style="margin-left:auto;font-size:20px;padding:8px 12px;position:relative">⚙<span id="keyDot" class="hide" style="position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--warn)"></span></button></header>
+<button id="calcOpen" aria-label="Open calculator" aria-controls="drawer2" aria-expanded="false" style="margin-left:auto;font-size:18px;padding:8px 12px">🧮</button>
+<button id="menuBtn" aria-label="Open settings" aria-controls="drawer" aria-expanded="false" style="font-size:20px;padding:8px 12px;position:relative">⚙<span id="keyDot" class="hide" style="position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--warn)"></span></button></header>
+<aside id="drawer2" aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;width:min(420px,94vw);background:var(--card);border-left:1px solid var(--line);z-index:50;transform:translateX(100%);transition:transform .25s ease;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 24px;overflow-y:auto;visibility:hidden">
+<div class="row" style="justify-content:space-between;margin:0 0 14px"><h2 style="margin:0">🧮 Risk : Reward calculator</h2><button id="calcClose" aria-label="Close calculator" style="padding:6px 12px">✕</button></div>
+<small>Enter your balance, risk %, risk : reward, entry, direction and lot size. The stop loss is set so that losing the trade costs exactly your risk %, and the take profit follows your ratio. This does not use the AI analysis.</small>
+<div class="grid g4" style="margin-top:10px">
+<div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8000"></div>
+<div><label>Account unit</label><select id="c_cur"><option>USD</option><option>USC (cents)</option></select></div>
+<div><label>Risk per trade %</label><input id="c_risk" type="number" step="any" inputmode="decimal" value="1"></div>
+<div><label>Risk : Reward</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
+<div id="c_rrc_w" class="hide"><label>Custom reward (1 : ?)</label><input id="c_rrc" type="number" step="any" inputmode="decimal" placeholder="e.g. 2.5"></div>
+<div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
+<div><label>Direction</label><select id="c_dir"><option value="buy">BUY</option><option value="sell">SELL</option></select></div>
+<div><label>Lot size</label><input id="c_lot" type="number" step="any" inputmode="decimal" placeholder="e.g. 0.10"></div>
+<div><label>Contract size (from MT4 specification)</label><input id="c_val" type="number" step="any" inputmode="decimal" value="100" placeholder="e.g. 100"></div></div>
+<small>Contract size is on your symbol’s Specification page in MT4 (yours showed 100). The app converts it to money for you: with a USC (cents) account every 1.00 price move on 1 lot is contract size × 100 cents.</small>
+<button class="primary" id="calcBtn" style="width:100%;margin-top:12px">Calculate</button>
+<div id="calc" style="margin-top:12px" aria-live="polite"></div>
+</aside>
 <div id="scrim" class="hide" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40"></div>
 <aside id="drawer" aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;width:min(360px,88vw);background:var(--card);border-left:1px solid var(--line);z-index:50;transform:translateX(100%);transition:transform .25s ease;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;overflow-y:auto;visibility:hidden">
 <div class="row" style="justify-content:space-between;margin:0 0 14px"><h2 style="margin:0">⚙ AI connection</h2><button id="menuClose" aria-label="Close settings" style="padding:6px 12px">✕</button></div>
@@ -69,21 +87,7 @@ label{font-size:13px;color:var(--mut);display:block;margin-bottom:3px}
 
 <div id="result"></div>
 
-<section class="card"><h2>5 · Risk : Reward calculator</h2>
-<small>Enter your balance, risk %, risk : reward, entry, direction and lot size. The stop loss is set so that losing the trade costs exactly your risk %, and the take profit follows your ratio. This does not use the AI analysis.</small>
-<div class="grid g4" style="margin-top:10px">
-<div><label>Account balance</label><input id="c_bal" type="number" step="any" inputmode="decimal" placeholder="e.g. 8000"></div>
-<div><label>Account unit</label><select id="c_cur"><option>USD</option><option>USC (cents)</option></select></div>
-<div><label>Risk per trade %</label><input id="c_risk" type="number" step="any" inputmode="decimal" value="1"></div>
-<div><label>Risk : Reward</label><select id="c_rr"><option value="1">1 : 1</option><option value="1.5">1 : 1.5</option><option value="2" selected>1 : 2</option><option value="3">1 : 3</option><option value="4">1 : 4</option><option value="5">1 : 5</option><option value="custom">Custom…</option></select></div>
-<div id="c_rrc_w" class="hide"><label>Custom reward (1 : ?)</label><input id="c_rrc" type="number" step="any" inputmode="decimal" placeholder="e.g. 2.5"></div>
-<div><label>Entry price</label><input id="c_entry" type="number" step="any" inputmode="decimal"></div>
-<div><label>Direction</label><select id="c_dir"><option value="buy">BUY</option><option value="sell">SELL</option></select></div>
-<div><label>Lot size</label><input id="c_lot" type="number" step="any" inputmode="decimal" placeholder="e.g. 0.10"></div>
-<div><label>Contract size (from MT4 specification)</label><input id="c_val" type="number" step="any" inputmode="decimal" value="100" placeholder="e.g. 100"></div></div>
-<small>Contract size is on your symbol’s Specification page in MT4 (yours showed 100). The app converts it to money for you: with a USC (cents) account every 1.00 price move on 1 lot is contract size × 100 cents.</small>
-<button class="primary" id="calcBtn" style="width:100%;margin-top:12px">Calculate</button>
-<div id="calc" style="margin-top:12px" aria-live="polite"></div></section>
+
 
 <section class="card"><h2>6 · Analysis history</h2><div id="hist"></div>
 <div id="cmp"></div></section>
@@ -119,13 +123,14 @@ function scale(blob,max,q){return new Promise((res,rej)=>{const im=new Image();c
 const b2d=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(b)});
 
 
-// ---------- sidebar ----------
-const drawer=$('drawer'),scrim=$('scrim');
-function openDrawer(){drawer.style.visibility='visible';scrim.classList.remove('hide');requestAnimationFrame(()=>drawer.style.transform='translateX(0)');drawer.setAttribute('aria-hidden','false');$('menuBtn').setAttribute('aria-expanded','true');setTimeout(()=>$('k_key').focus(),260)}
-function closeDrawer(){drawer.style.transform='translateX(100%)';scrim.classList.add('hide');drawer.setAttribute('aria-hidden','true');$('menuBtn').setAttribute('aria-expanded','false');setTimeout(()=>{if(drawer.getAttribute('aria-hidden')==='true')drawer.style.visibility='hidden'},260);keyDot()}
+// ---------- sidebars ----------
+const scrim=$('scrim'),DR={menu:{el:$('drawer'),btn:$('menuBtn'),focus:'k_key'},calc:{el:$('drawer2'),btn:$('calcOpen'),focus:'c_bal'}};
+function hideDrawer(k){const d=DR[k];d.el.style.transform='translateX(100%)';d.el.setAttribute('aria-hidden','true');d.btn.setAttribute('aria-expanded','false');setTimeout(()=>{if(d.el.getAttribute('aria-hidden')==='true')d.el.style.visibility='hidden'},260)}
+function openDrawer(k){k=k||'menu';Object.keys(DR).forEach(x=>{if(x!==k)hideDrawer(x)});const d=DR[k];d.el.style.visibility='visible';scrim.classList.remove('hide');requestAnimationFrame(()=>d.el.style.transform='translateX(0)');d.el.setAttribute('aria-hidden','false');d.btn.setAttribute('aria-expanded','true');setTimeout(()=>{const f=$(d.focus);if(f&&!f.value)f.focus()},260)}
+function closeDrawer(){Object.keys(DR).forEach(hideDrawer);scrim.classList.add('hide');keyDot()}
 function keyDot(){$('keyDot').classList.toggle('hide',!!$('k_key').value.trim())}
-$('menuBtn').onclick=openDrawer;$('menuClose').onclick=closeDrawer;$('menuSave').onclick=closeDrawer;scrim.onclick=closeDrawer;
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawer.getAttribute('aria-hidden')==='false')closeDrawer()});
+$('menuBtn').onclick=()=>openDrawer('menu');$('calcOpen').onclick=()=>openDrawer('calc');$('menuClose').onclick=closeDrawer;$('calcClose').onclick=closeDrawer;$('menuSave').onclick=closeDrawer;scrim.onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});
 
 // ---------- AI connection ----------
 try{$('k_key').value=localStorage.getItem('gcai_key')||'';$('k_model').value=localStorage.getItem('gcai_model')||'claude-sonnet-5-5'}catch(e){}
